@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"io"
 
+	"encoding/base64"
+
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
 )
@@ -30,7 +32,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
-	
+	//set up memory to store thumbnail
 	const maxMemory = 10 << 20
 	r.ParseMultipartForm(maxMemory)
 
@@ -58,11 +60,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "unable to read file", err)
 		return
 	}
-	thumb := thumbnail{image, mediaType}
-
-	videoThumbnails[videoID] = thumb
-	thumbnailURL := fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, videoID)
-	fmt.Println(thumbnailURL)
+	
+	//encode thumbnail in base64 to store in url field.
+	encodedThumbnail := base64.StdEncoding.EncodeToString(image)
+	thumbnailURL := fmt.Sprintf("data:%s;base64,%s", mediaType, encodedThumbnail)
 	videoDetail.ThumbnailURL = &thumbnailURL
 
 	err = cfg.db.UpdateVideo(videoDetail)
