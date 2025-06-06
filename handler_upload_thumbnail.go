@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"mime"
 	
 	"path/filepath"
 
@@ -58,27 +59,31 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	//convert mediaType to extension??
-
-	contentParts := strings.Split(mediaType, ";")//this should return up to 3 entries
-	//for Example “image/png; charset=utf-8” will result in {"image/png", "charset=utf-8"}
-	if len(contentParts) == 0 {
-		//is it even possible to get to this point
-		respondWithError(w, http.StatusBadRequest, "no content type provided", err)
+	//convert mediaType to extension
+	//Step One, pull the media type out in the format x/y
+	contentPart, _, err := mime.ParseMediaType(mediaType)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "bad Content-Type", err)
 		return
 	}
-	mediaParts := strings.Split(contentParts[0], "/")//this should return 2 entries
-	//for Example “image/png” will result in {"image", "png"} and
-	//“application/octet-stream” will result in {"application", "octet-stream"}
-	if mediaParts[0] != "image" || len(mediaParts) < 2 {
+	//step two, make sure the left part of the media type is image
+	mediaParts := strings.Split(contentPart, "/")
+	if mediaParts[0] != "image" {
 		//if the first part isn't of type image it is not a valid thumbnail
-		respondWithError(w, http.StatusBadRequest, "incorrect file type", err)
+		respondWithError(w, http.StatusBadRequest, "incorrect file type", nil)
 		return
 	}
-	extension := mediaParts[len(mediaParts)-1]
-
-	//cfg.assetsRoot is the path for assets
-	filename := fmt.Sprintf("%s.%s", videoIDString, extension)
+	//step three, check if the media type has a defined extension
+	extensions, err := mime.ExtensionsByType(contentPart)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid Content-Type", err)
+		return
+	}
+	if len(extensions) == 0 {
+		respondWithError(w, http.StatusBadRequest, "No associated file type", nil)
+	}
+	extension := extensions[0] //at this point we can narrow down to acceptable extensions
+	filename := fmt.Sprintf("%s%s", videoIDString, extension)
 
 	fileDestination := filepath.Join(cfg.assetsRoot, filename)
 
