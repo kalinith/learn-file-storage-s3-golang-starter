@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"io"
 	"os"
-	"strings"
 	"mime"
 	
 	"path/filepath"
@@ -55,7 +54,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if videoDetail.UserID != userID {
-		respondWithError(w, http.StatusUnauthorized, "Not Own Video", err)
+		respondWithError(w, http.StatusUnauthorized, "User is not the owner of the video", nil)
 		return
 	}
 
@@ -66,11 +65,9 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "bad Content-Type", err)
 		return
 	}
-	//step two, make sure the left part of the media type is image
-	mediaParts := strings.Split(contentPart, "/")
-	if mediaParts[0] != "image" {
-		//if the first part isn't of type image it is not a valid thumbnail
-		respondWithError(w, http.StatusBadRequest, "incorrect file type", nil)
+	//step two, make sure the media type is image/jpeg or image/png
+	if contentPart != "image/jpeg" && contentPart != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "incorrect file type, only jpg and png allowed", nil)
 		return
 	}
 	//step three, check if the media type has a defined extension
@@ -94,7 +91,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	_, err = io.Copy(image, file)
-	//image, err := io.ReadAll(file)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "unable to read file", err)
 		return
