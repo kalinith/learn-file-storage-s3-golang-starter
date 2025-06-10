@@ -8,6 +8,8 @@ import (
 	"mime"
 	
 	"path/filepath"
+	"crypto/rand"
+	"encoding/base64"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -78,10 +80,21 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	if len(extensions) == 0 {
 		respondWithError(w, http.StatusBadRequest, "No associated file type", nil)
+		return
 	}
 	extension := extensions[0] //at this point we can narrow down to acceptable extensions
-	filename := fmt.Sprintf("%s%s", videoIDString, extension)
 
+	//get a unique filename for the thumbnail
+	key := make([]byte, 32)
+	_, err = rand.Read(key)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Issue generating random name", err)
+		return
+	}
+	var fileUniquID string
+	fileUniquID = base64.RawURLEncoding.EncodeToString(key)
+	filename := fmt.Sprintf("%s%s", fileUniquID, extension)
+	fmt.Printf("unique:%s\nfile name:%s",fileUniquID, filename)
 	fileDestination := filepath.Join(cfg.assetsRoot, filename)
 
 	image, err := os.Create(fileDestination)
