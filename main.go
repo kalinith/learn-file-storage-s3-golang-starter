@@ -4,11 +4,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"context"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
-//	"github.com/google/uuid"
-
 	"github.com/joho/godotenv"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+
 	_ "github.com/lib/pq"
 )
 
@@ -22,6 +24,8 @@ type apiConfig struct {
 	s3Region         string
 	s3CfDistribution string
 	port             string
+	s3Client		 *s3.Client
+	host			 string
 }
 
 type thumbnail struct {
@@ -61,7 +65,6 @@ func main() {
 	if assetsRoot == "" {
 		log.Fatal("ASSETS_ROOT environment variable is not set")
 	}
-
 	s3Bucket := os.Getenv("S3_BUCKET")
 	if s3Bucket == "" {
 		log.Fatal("S3_BUCKET environment variable is not set")
@@ -82,6 +85,17 @@ func main() {
 		log.Fatal("PORT environment variable is not set")
 	}
 
+	host := os.Getenv("HOST")
+	if port == "" {
+		log.Fatal("HOST environment variable is not set")
+	}
+
+	awsConf, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(s3Region))
+	if err != nil {
+		log.Fatal("s3_Config unable to load default config")
+	}	
+	s3Client := s3.NewFromConfig(awsConf)
+
 	cfg := apiConfig{
 		db:               db,
 		jwtSecret:        jwtSecret,
@@ -92,6 +106,8 @@ func main() {
 		s3Region:         s3Region,
 		s3CfDistribution: s3CfDistribution,
 		port:             port,
+		s3Client:		  s3Client,
+		host:			  host,
 	}
 
 	err = cfg.ensureAssetsDir()
@@ -127,6 +143,6 @@ func main() {
 		Handler: mux,
 	}
 
-	log.Printf("Serving on: http://localhost:%s/app/\n", port)
+	log.Printf("Serving on: http://%s:%s/app/\n", host,  port)
 	log.Fatal(srv.ListenAndServe())
 }

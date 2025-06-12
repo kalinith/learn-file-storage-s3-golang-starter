@@ -7,10 +7,6 @@ import (
 	"os"
 	"mime"
 	
-	"path/filepath"
-	"crypto/rand"
-	"encoding/base64"
-
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
 )
@@ -72,31 +68,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "incorrect file type, only jpg and png allowed", nil)
 		return
 	}
-	//step three, check if the media type has a defined extension
-	extensions, err := mime.ExtensionsByType(contentPart)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "invalid Content-Type", err)
-		return
-	}
-	if len(extensions) == 0 {
-		respondWithError(w, http.StatusBadRequest, "No associated file type", nil)
-		return
-	}
-	extension := extensions[0] //at this point we can narrow down to acceptable extensions
+	
+	filename := getAssetPath(contentPart)
 
-	//get a unique filename for the thumbnail
-	key := make([]byte, 32)
-	_, err = rand.Read(key)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Issue generating random name", err)
-		return
-	}
-	var fileUniquID string
-	fileUniquID = base64.RawURLEncoding.EncodeToString(key)
-	filename := fmt.Sprintf("%s%s", fileUniquID, extension)
-	fmt.Printf("unique:%s\nfile name:%s",fileUniquID, filename)
-	fileDestination := filepath.Join(cfg.assetsRoot, filename)
-
+	fileDestination := cfg.getAssetDiskPath(filename)
+	thumbnailURL := cfg.getAssetURL(filename)
+	
 	image, err := os.Create(fileDestination)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "unable to create file", err)
@@ -108,7 +85,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "unable to read file", err)
 		return
 	}
-	thumbnailURL := fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, filename)
+	
 	videoDetail.ThumbnailURL = &thumbnailURL
 
 	err = cfg.db.UpdateVideo(videoDetail)
