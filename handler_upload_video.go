@@ -6,9 +6,14 @@ import (
 	"io"
 	"os"
 	"mime"
+	"errors"
+	"context"
+
 	
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 
@@ -35,6 +40,9 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	fmt.Println("uploading video", videoID, "by user", userID)
 
 	//maxmem still needs to be set here
+	const maxMemory = 1 << 30
+	r.Body = http.MaxBytesReader(w, r.Body, maxMemory)
+	r.ParseMultipartForm(maxMemory)
 
 	file, header, err := r.FormFile("video")
 	if err != nil {
@@ -69,21 +77,43 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	
 	filename := getAssetPath(contentPart)
 
-
-	fileDestination := cfg.getAssetDiskPath(filename)
-	videoURL := cfg.getAssetURL(filename)
-
-	video, err := os.Create(fileDestination)
+	tempVideo, err := os.CreateTemp("", "tubely_temp_vid.mp4")
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "unable to create file", err)
 		return
 	}
+	defer os.Remove("tubely_temp_vid.mp4")
+	defer tempVideo.Close()
 
-	_, err = io.Copy(video, file)
+	_, err = io.Copy(tempVideo, file)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "unable to read file", err)
-		return
+	    if errors.Is(err, http.ErrBodyReadAfterClose) || err.Error() == "http: request body too large" {
+	        respondWithError(w, http.StatusRequestEntityTooLarge, "Uploaded file is too large", err)
+	        return
+	    }
+	    respondWithError(w, http.StatusBadRequest, "unable to read file", err)
+	    return
 	}
+	//resedt temp file to beginning
+	_, err = tempVideo.Seek(0, io.SeekStart)
+	if err != nil {
+	    respondWithError(w, http.StatusInternalServerError, "failed to reset file for upload", err)
+	    return
+	}
+
+	//S3 upload
+	_, err = cfg.s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
+	    Bucket:      aws.String(cfg.s3Bucket),
+	    Key:         aws.String(filename),
+	    Body:        tempVideo,
+	    ContentType: aws.String(contentPart),
+	})
+	if err != nil {
+	    respondWithError(w, http.StatusInternalServerError, "failed to save file to bucket", err)
+	    return
+	}
+
+	videoURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, filename)
 
 	videoDetail.VideoURL = &videoURL
 
