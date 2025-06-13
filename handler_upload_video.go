@@ -76,13 +76,13 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	}
 	
 	filename := getAssetPath(contentPart)
-
-	tempVideo, err := os.CreateTemp("", "tubely_temp_vid.mp4")
+	tempFilename := "tubely_temp_vid.mp4"
+	tempVideo, err := os.CreateTemp("", tempFilename)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "unable to create file", err)
 		return
 	}
-	defer os.Remove("tubely_temp_vid.mp4")
+	defer os.Remove(tempFilename)
 	defer tempVideo.Close()
 
 	_, err = io.Copy(tempVideo, file)
@@ -94,17 +94,24 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	    respondWithError(w, http.StatusBadRequest, "unable to read file", err)
 	    return
 	}
+
+	//the file has been saved to temp so we can now find it's aspect ratio
+	ratio, err := getVideoAspectRatio(tempVideo.Name())
+	if err != nil {
+	    respondWithError(w, http.StatusInternalServerError, "Issue decoding Metadata", err)
+	    return
+	}
 	//resedt temp file to beginning
 	_, err = tempVideo.Seek(0, io.SeekStart)
 	if err != nil {
 	    respondWithError(w, http.StatusInternalServerError, "failed to reset file for upload", err)
 	    return
 	}
-
+	s3filename := fmt.Sprintf("%s/%s", ratio, filename)
 	//S3 upload
 	_, err = cfg.s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 	    Bucket:      aws.String(cfg.s3Bucket),
-	    Key:         aws.String(filename),
+	    Key:         aws.String(s3filename),
 	    Body:        tempVideo,
 	    ContentType: aws.String(contentPart),
 	})
@@ -113,7 +120,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	    return
 	}
 
-	videoURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, filename)
+	videoURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, s3filename)
 
 	videoDetail.VideoURL = &videoURL
 
