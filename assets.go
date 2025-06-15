@@ -167,3 +167,18 @@ func ratioThis(value1 int, value2 int) string {
 	}
 	return ratio
 }
+
+func processVideoForFastStart(filePath string) (string, error) {
+	if filePath == "" {
+		return "", errors.New("no filepath supplied")
+	}
+	outputfile := fmt.Sprintf("%s.processing", filePath)
+	fmt.Println("file name:%s\nnew file name:%s", filePath, outputfile)
+	cmd := exec.Command("ffmpeg", "-i", filePath, "-c", "copy", "-movflags", "faststart", "-f", "mp4", outputfile)
+	fmt.Sprintf("Command: %s\n", cmd.String)
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+	return outputfile, nil
+}

@@ -94,25 +94,33 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	    respondWithError(w, http.StatusBadRequest, "unable to read file", err)
 	    return
 	}
-
+	//now we create a processed version of the file.
+	newTempVideo, err := processVideoForFastStart(tempVideo.Name())
+	if err != nil {
+	    respondWithError(w, http.StatusInternalServerError, "mp4 procesing failed", err)
+	    return
+	}
 	//the file has been saved to temp so we can now find it's aspect ratio
-	ratio, err := getVideoAspectRatio(tempVideo.Name())
+	ratio, err := getVideoAspectRatio(newTempVideo)
 	if err != nil {
 	    respondWithError(w, http.StatusInternalServerError, "Issue decoding Metadata", err)
 	    return
 	}
-	//resedt temp file to beginning
-	_, err = tempVideo.Seek(0, io.SeekStart)
+	
+	optimisedFile, err := os.Open(newTempVideo) // For read access.
 	if err != nil {
-	    respondWithError(w, http.StatusInternalServerError, "failed to reset file for upload", err)
+	    respondWithError(w, http.StatusInternalServerError, "failed to open file for upload", err)
 	    return
 	}
+	defer os.Remove(newTempVideo)
+	defer optimisedFile.Close()
+
 	s3filename := fmt.Sprintf("%s/%s", ratio, filename)
 	//S3 upload
 	_, err = cfg.s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 	    Bucket:      aws.String(cfg.s3Bucket),
 	    Key:         aws.String(s3filename),
-	    Body:        tempVideo,
+	    Body:        optimisedFile,
 	    ContentType: aws.String(contentPart),
 	})
 	if err != nil {
